@@ -8,21 +8,21 @@ from sklearn.metrics import log_loss
 from sklearn.preprocessing import OneHotEncoder
 import matplotlib.pyplot as plt
 
-##################1.用pandas对数据进行初步的了解########################
+##################1.pandas for preliminary########################
 df = pd.read_csv('train.csv', sep=',', header=None)
 df.describe()
-#通过箱线图分析特征分布情况，排除异常特征或样本
-#箱线图：Q1-3IQR, Q1-1.5IQR, Q1, Q2, Q3, Q3+1.5IQR, Q3+3IQR
-#IQR=Q3-Q1，四分位数差，如下画箱线图，有几行则画几个box，所以要转置T
+#box plot for feature analysis
+#boxplot：Q1-3IQR, Q1-1.5IQR, Q1, Q2, Q3, Q3+1.5IQR, Q3+3IQR
+#IQR=Q3-Q1, be aware of transpose T
 plt.boxplot(df.iloc[:,1:10].T, showmeans=True), plt.show()
 
 
 
-##################2.处理缺失特征########################################
+##################2.for missing features########################################
 df.col1 = df.col1.fillna(df.col1.mode()[0]) #用众数填充缺失值
 df.col1 = df.col1.fillna(df.col1.mean()) #用均值填充缺失值
 
-#用无缺失的数据建立模型来预测缺失数据的可能取值
+#predicting missing features
 imputer = KNeighborsRegressor()
 df_nonnull = df[df.col1.isnull()==False]  #非特征缺失样本
 df_null = df[df.col1.isnull()==True]      #特征缺失样本
@@ -34,22 +34,22 @@ new_df = df_nonnull.append(df_null)
 
 
 
-##################3.图像数据增强，通过旋转、翻转、形变等###################
-df += np.random.normal(0, 0.1, df.shape) #加gauss noise
-df = df[::-1]                            #上下翻转
-df = df.T[::-1].T                        #左右翻转
-###旋转，假设旋转目标为df，大小为n*n
-#构建反对角矩阵
+##################3.data augment###################
+df += np.random.normal(0, 0.1, df.shape) #gauss noise
+df = df[::-1]                            #flip up down
+df = df.T[::-1].T                        #flip left right
+###rotate image df，size=n*n
+#building back diagnose
 back_diag = np.zeros(df.shape)
 for i in range(len(df)):
   back_diag[i][(len(df))-1-i] = 1
-np.dot(df,back_diag).T                   #逆时针旋转90度
-np.dot(back_diag,np.dot(df,back_diag))   #逆时针旋转180度
-np.dot(df.T,back_diag)                   #将矩阵逆时针旋转270度
+np.dot(df,back_diag).T                   #anticlockwise 90 degree
+np.dot(back_diag,np.dot(df,back_diag))   #anticlockwise 180 degree
+np.dot(df.T,back_diag)                   #anticlockwise 270 degree
 
 
 
-##################4.选择基准模型，利用交叉验证CV##########################
+##################4.base model, cross validation##########################
 #交叉验证可进行多次，通过多次的平均值估计模型性能
 clf = xgb.XGBClassifier()
 scoring = ['neg_log_loss', 'accuracy']
@@ -65,26 +65,26 @@ print 'test-logloss: %f' % pd.DataFrame(testlogloss).mean()
 
 
 
-#######5,6反复进行，保证单模型能取得较好的结果，再去做模型集成#############
-##################5.特征选择###############################################
+#######repeatedly step 5 and 6 for better single model#############
+##################5.feature selection###############################################
 ##注意特征选择过程需要避免验证或测试样本参与特征选择过程
 ##transform适用于未参与模型拟合过程的样本进行特征选择
-####去除低方差特征
+####remove low var
 sel = VarianceThreshold(threshold=2.5)
 new_x_train = sel.fit_transform(x_train)
 
 ####五种单变量特征选择方法，可以统一用GenericUnivariateSelect通过不同参数实现
-#需要注意的是x_train不能为负，可以通过加一个特定的值，得到特征后减去统一的值
+#note that x_train cannot be negtive，by adding a big positive, substract that after feature selection
 new_x_train = SelectKBest(chi2, k=100).fit_transform(x_train, y_train)#卡方检验最好的前100个特征
 new_x_train = GenericUnivariateSelect(score_func=chi2, mode='k_best', param=100)
 
-####利用评估器的feature_importances_或coef_属性进行特征选择
+####feature_importances_ or coef_
 selector = RFECV(estimator=SVC(),step=1,cv=StratifiedKFold(5),scoring='accuracy')
 selector = selector.fit(x_train, y_train)
 new_x_train = selector.transform(x_train)
 #也可直接获取特征：
 new_x_train = selector.fit_transform(x_train, y_train)
-##lightgbm特征选择
+##using lightgbm
 clf = lgb.LGBMClassifier()
 clf.fit(x_train, y_train)
 importances = clf.feature_importances_
@@ -93,11 +93,11 @@ print("Feature ranking:")
 for i in range(50):
   print("%d. feature %d (%f)" % (f + 1, indices[f], importances[indices[f]]))
 selectedf_index = (np.argwhere((importances>0.0)==True)).reshape(-1,)#选择大于0的特征对应的索引
-###上面的lightgbm也可以用RFECV来选择特征
+###by RFECV
 selector = RFECV(estimator=clf,step=1,cv=StratifiedKFold(5))
 new_x_train = selector.fit_transform(x_train)
 
-####sklearn还有一种根据评估器来选择特征的通用方法SelectFromModel
+####sklearn SelectFromModel
 model = SelectFromModel(clf, prefit=True)#对已完成训练的模型进行特征选择
 new_x_train = model.transform(x_train)
 new_x_test = model.transform(x_test)#该过程适用于对未参与拟合的测试样本进行特征选择
@@ -105,7 +105,7 @@ new_x_test = model.transform(x_test)#该过程适用于对未参与拟合的测�
 model = SelectFromModel(clf, threshold=None, prefit=False, norm_order=1)
 new_x_train = model.fit_transform(x_train, y_train)
 
-#####特征与标签的相关性评估，亦可用于挑选特征
+#####correlation valuation for feature selection
 #pearson系数分析线性相关性，无需均值为0
 import scipy.stats as stats
 feat = np.array([0.3,0.6,0.1,0.9])
@@ -140,7 +140,7 @@ print mine.mic()
 
 
 
-##########################6.多个不同类型的模型调参，训练结果可视化，利用网格搜索GridSearchCV#############
+##########################6.param tuning, visualizaiton, by GridSearchCV#############
 #逐个参数进行调优，交叉反复多轮进行调优，先粗调后精调
 clf = GradientBoostingClassifier()
 param_grid = {'n_estimators': [40,80,100,200,500],
@@ -160,7 +160,7 @@ plt.show()
 
 
 
-##################7.模型集成stacking，尽量模型相关性不一样########################################
+##################7.ensemble stacking，尽量模型相关性不一样########################################
 #####stacking集成模型代码
 ##stage 1
 def get_singlemodel(clf, x_train, y_train, x_test, nFolds=5):
@@ -215,7 +215,7 @@ y_test_pro_s2 = clf_s2.predict_proba(x_test_s1)[:,1]
 
 
 
-##################8.模型保存和加载############################################################
+##################8.model save and load############################################################
 import pickle
 print 'save model'
 with open('clf.pickle','wb') as fw:
