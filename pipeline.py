@@ -97,7 +97,7 @@ selectedf_index = (np.argwhere((importances>0.0)==True)).reshape(-1,)#选择大�
 selector = RFECV(estimator=clf,step=1,cv=StratifiedKFold(5))
 new_x_train = selector.fit_transform(x_train)
 
-####sklearn SelectFromModel
+####根据评估器来选择特征的通用方法sklearn SelectFromModel
 model = SelectFromModel(clf, prefit=True)#对已完成训练的模型进行特征选择
 new_x_train = model.transform(x_train)
 new_x_test = model.transform(x_test)#该过程适用于对未参与拟合的测试样本进行特征选择
@@ -106,6 +106,10 @@ model = SelectFromModel(clf, threshold=None, prefit=False, norm_order=1)
 new_x_train = model.fit_transform(x_train, y_train)
 
 #####correlation valuation for feature selection
+x=np.arange(0,2*np.pi,0.01)
+y=np.sin(x)
+df = pd.DataFrame([x,y]).T
+plt.plot(x,y), plt.show()
 #pearson系数分析线性相关性，无需均值为0
 import scipy.stats as stats
 feat = np.array([0.3,0.6,0.1,0.9])
